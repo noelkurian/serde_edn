@@ -50,6 +50,15 @@ impl PartialEq for Value {
 
 impl Eq for Value {}
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match crate::to_string(self) {
+            Ok(s) => f.write_str(&s),
+            Err(_) => write!(f, "Value(/* serialization error */)",),
+        }
+    }
+}
+
 impl Hash for Value {
     fn hash<H>(&self, state: &mut H)
     where
