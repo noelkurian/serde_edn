@@ -134,7 +134,11 @@ impl Serialize for Value {
                 seq.end()
             }
             Value::Tagged { tag, value } => {
-                let tag_name = tag.as_str().strip_prefix(':').unwrap_or(tag.as_str());
+                let tag_name = if let Some(name) = tag.as_str().strip_prefix(':') {
+                    name
+                } else {
+                    tag.as_str()
+                };
                 if tag_name == "inst" {
                     if let Value::Integer(ms) = &**value {
                         let rfc3339 = crate::tags::format_inst_ms(*ms);
@@ -192,7 +196,10 @@ impl<'de> de::SeqAccess<'de> for SeqAccess {
             return Ok(None);
         }
         self.len -= 1;
-        let element = self.elements.next().unwrap();
+        let element = self
+            .elements
+            .next()
+            .expect("element must exist when len > 0");
         seed.deserialize(element).map(Some)
     }
 
@@ -480,7 +487,11 @@ impl<'de> Deserializer<'de> for Value {
                 })
             }
             Value::Tagged { tag, value } => {
-                let tag_name = tag.as_str().strip_prefix(':').unwrap_or(tag.as_str());
+                let tag_name = if let Some(name) = tag.as_str().strip_prefix(':') {
+                    name
+                } else {
+                    tag.as_str()
+                };
                 let inner = &*value;
                 let s = match inner {
                     Value::String(s) => format!("#{} \"{}\"", tag_name, s),
@@ -693,7 +704,11 @@ impl<'de> Deserializer<'de> for Value {
         match self {
             Value::Keyword(k) => {
                 let s = k.as_str();
-                let s = s.strip_prefix(':').unwrap_or(s);
+                let s = if let Some(stripped) = s.strip_prefix(':') {
+                    stripped
+                } else {
+                    s
+                };
                 visitor.visit_str(s)
             }
             Value::String(s) => visitor.visit_str(&s),

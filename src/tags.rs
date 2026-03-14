@@ -54,9 +54,13 @@ impl TagRegistry {
 pub fn format_inst_ms(ms: i64) -> String {
     use chrono::{DateTime, SecondsFormat, Utc};
 
-    let dt = DateTime::from_timestamp_millis(ms)
-        .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap())
-        .with_timezone(&Utc);
+    let default_dt = DateTime::from_timestamp(0, 0).expect("epoch timestamp is always valid");
+    let dt = if let Some(dt) = DateTime::from_timestamp_millis(ms) {
+        dt
+    } else {
+        default_dt
+    }
+    .with_timezone(&Utc);
     dt.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 

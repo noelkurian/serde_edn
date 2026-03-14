@@ -288,7 +288,10 @@ impl<'de> EdnDeserializer<'de> {
                         .map_err(|_| self.error("invalid unicode escape"))?;
                     char::from_u32(code).ok_or_else(|| self.error("invalid unicode codepoint"))?
                 }
-                _ if name.len() == 1 => name.chars().next().unwrap(),
+                _ if name.len() == 1 => name
+                    .chars()
+                    .next()
+                    .expect("name is guaranteed to have 1 char"),
                 _ => return Err(self.error(format!("invalid character literal: \\{}", name))),
             }
         } else {
@@ -500,7 +503,11 @@ impl<'de> serde::Deserializer<'de> for EdnDeserializer<'de> {
                 })
             }
             Value::Tagged { tag, value } => {
-                let tag_name = tag.as_str().strip_prefix(':').unwrap_or(tag.as_str());
+                let tag_name = if let Some(name) = tag.as_str().strip_prefix(':') {
+                    name
+                } else {
+                    tag.as_str()
+                };
                 let s = match value.as_ref() {
                     Value::String(s) => format!("#{} \"{}\"", tag_name, s),
                     Value::Integer(i) => format!("#{} Integer({})", tag_name, i),
@@ -757,7 +764,10 @@ impl<'de> de::SeqAccess<'de> for SeqAccess {
             return Ok(None);
         }
         self.len -= 1;
-        let element = self.elements.next().unwrap();
+        let element = self
+            .elements
+            .next()
+            .expect("element must exist when len > 0");
         // Use the Value itself as the deserializer - it implements Deserialize
         seed.deserialize(element).map(Some)
     }

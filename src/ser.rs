@@ -32,7 +32,7 @@ impl Serializer {
         self.output.push('"');
     }
 
-    fn write_edn_char(&mut self, c: char) {
+    fn write_edn_char(&mut self, c: char) -> Result<(), Error> {
         self.output.push('\\');
         match c {
             '\n' => self.output.push_str("newline"),
@@ -43,10 +43,10 @@ impl Serializer {
             _ => {
                 use std::fmt::Write;
                 write!(&mut self.output, "u{:04X}", c as u32)
-                    .map_err(|_| Error::Custom("format error".to_string()))
-                    .unwrap();
+                    .map_err(|_| Error::Custom("format error".to_string()))?;
             }
         }
+        Ok(())
     }
 }
 
@@ -126,7 +126,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        self.write_edn_char(v);
+        self.write_edn_char(v)?;
         Ok(())
     }
 
