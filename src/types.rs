@@ -95,7 +95,12 @@ impl Serialize for Keyword {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.0)
+        let with_colon = if self.0.starts_with(':') {
+            self.0.clone()
+        } else {
+            format!(":{}", self.0)
+        };
+        serializer.serialize_str(&with_colon)
     }
 }
 
