@@ -121,7 +121,8 @@ impl Serialize for Value {
             Value::Keyword(k) => k.serialize(serializer),
             Value::Integer(i) => serializer.serialize_i64(*i),
             Value::Float(f) => serializer.serialize_f64(*f),
-            Value::List(v) | Value::Vector(v) => {
+            Value::List(v) => serializer.serialize_newtype_struct("__edn_list__", v),
+            Value::Vector(v) => {
                 let mut seq = serializer.serialize_seq(Some(v.len()))?;
                 for item in v {
                     seq.serialize_element(item)?;
@@ -135,13 +136,7 @@ impl Serialize for Value {
                 }
                 map.end()
             }
-            Value::Set(v) => {
-                let mut seq = serializer.serialize_seq(Some(v.len()))?;
-                for item in v {
-                    seq.serialize_element(item)?;
-                }
-                seq.end()
-            }
+            Value::Set(v) => serializer.serialize_newtype_struct("__edn_set__", v),
             Value::Tagged { tag, value } => {
                 let tag_name = if let Some(name) = tag.as_str().strip_prefix(':') {
                     name
@@ -439,7 +434,11 @@ impl<'de> Deserialize<'de> for Value {
                 while let Some(elem) = seq.next_element()? {
                     vec.push(elem);
                 }
-                Ok(Value::Vector(vec))
+                match crate::de::get_current_seq_kind() {
+                    Some(crate::de::SeqKind::List) => Ok(Value::List(vec)),
+                    Some(crate::de::SeqKind::Set) => Ok(Value::Set(vec)),
+                    _ => Ok(Value::Vector(vec)),
+                }
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -474,8 +473,17 @@ impl<'de> Deserializer<'de> for Value {
             Value::String(s) => visitor.visit_string(s),
             Value::Symbol(s) => visitor.visit_str(s.as_str()),
             Value::Keyword(k) => visitor.visit_str(k.as_str()),
-            Value::List(v) | Value::Vector(v) => {
+            Value::List(v) => {
                 let len = v.len();
+                let _guard = crate::de::set_seq_kind(crate::de::SeqKind::List);
+                visitor.visit_seq(SeqAccess {
+                    elements: v.into_iter(),
+                    len,
+                })
+            }
+            Value::Vector(v) => {
+                let len = v.len();
+                let _guard = crate::de::set_seq_kind(crate::de::SeqKind::Vector);
                 visitor.visit_seq(SeqAccess {
                     elements: v.into_iter(),
                     len,
@@ -490,6 +498,7 @@ impl<'de> Deserializer<'de> for Value {
             }
             Value::Set(v) => {
                 let len = v.len();
+                let _guard = crate::de::set_seq_kind(crate::de::SeqKind::Set);
                 visitor.visit_seq(SeqAccess {
                     elements: v.into_iter(),
                     len,

@@ -68,10 +68,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | keyword | `Keyword` | `:foo`, `:name/space` |
 | integer | `i64`, `i32`, `i16`, `i8` | `42`, `-10`, `+100N` |
 | float | `f64`, `f32` | `3.14`, `1.5e-3`, `##NaN` |
-| list | `Vec<T>` | `(1 2 3)` |
+| list | `EdnList<T>` | `(1 2 3)` |
 | vector | `Vec<T>` | `[1 2 3]` |
 | map | `HashMap<K, V>` | `{:key "value"}` |
-| set | `HashSet<T>` | `#{1 2 3}` |
+| set | `EdnSet<T>` | `#{1 2 3}` |
 | tagged literal | varies | `#inst "..."`, `#uuid "..."` |
 
 ## Detailed Usage
@@ -103,13 +103,19 @@ let unicode: char = from_str(r#"\u03B1"#).expect("failed to parse unicode"); // 
 
 ```rust
 use std::collections::HashMap;
+use serde_edn::{EdnList, EdnSet};
 
 // Vectors
 let vec: Vec<i32> = from_str("[1 2 3]").expect("failed to parse vector");
 assert_eq!(vec, vec![1, 2, 3]);
 
-// Lists (deserialized as vectors)
-let list: Vec<String> = from_str(r#"("a" "b" "c")"#).expect("failed to parse list");
+// Lists - use EdnList to preserve EDN list syntax
+let list: EdnList<String> = from_str(r#"("a" "b" "c")"#).expect("failed to parse list");
+assert_eq!(list.items, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+
+// Sets - use EdnSet to preserve EDN set syntax
+let set: EdnSet<i32> = from_str("#{1 2 3}").expect("failed to parse set");
+assert_eq!(set.items.len(), 3);
 
 // Maps
 let map: HashMap<String, i32> = from_str(r#"{"a" 1 "b" 2}"#).expect("failed to parse map");
@@ -117,6 +123,26 @@ assert_eq!(map.get("a"), Some(&1));
 
 // Keyword maps (idiomatic EDN)
 let map: HashMap<String, i32> = from_str(r#"{:a 1 :b 2}"#).expect("failed to parse keyword map");
+```
+
+### EdnList and EdnSet
+
+EDN distinguishes between vectors `[]`, lists `()`, and sets `#{}`. By default, `Vec<T>` serializes as a vector. To preserve list or set syntax, use the wrapper types:
+
+```rust
+use serde_edn::{EdnList, EdnSet, to_string, from_str};
+
+// EdnList serializes with parentheses
+let list = EdnList { items: vec![1, 2, 3] };
+assert_eq!(to_string(&list).unwrap(), "(1 2 3)");
+
+// EdnSet serializes with #{}
+let set = EdnSet { items: vec![1, 2, 3] };
+assert_eq!(to_string(&set).unwrap(), "#{1 2 3}");
+
+// Round-trip preserves syntax
+let list: EdnList<i32> = from_str("(1 2 3)").unwrap();
+assert_eq!(to_string(&list).unwrap(), "(1 2 3)");
 ```
 
 ### Symbols and Keywords
@@ -405,6 +431,8 @@ assert_eq!(v1, v2);
 - `Value` - Enum representing all possible EDN values
 - `Keyword` - EDN keyword type (e.g., `:foo`)
 - `Symbol` - EDN symbol type (e.g., `foo`)
+- `EdnList<T>` - Wrapper type for EDN lists (serializes with `()`)
+- `EdnSet<T>` - Wrapper type for EDN sets (serializes with `#{}`)
 - `Error` - Error type for parsing and serialization operations
 - `ParseError` - Detailed parse error with line/column information
 - `TagRegistry` - Registry for custom tagged literal handlers

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use serde::de;
@@ -7,6 +8,36 @@ use crate::error::{Error, ParseError};
 use crate::tags::handle_tagged_value;
 use crate::types::{Keyword, Symbol};
 use crate::Value;
+
+thread_local! {
+    static CURRENT_SEQ_KIND: Cell<Option<SeqKind>> = const { Cell::new(None) };
+}
+
+pub fn get_current_seq_kind() -> Option<SeqKind> {
+    CURRENT_SEQ_KIND.with(|k| k.get())
+}
+
+pub fn set_seq_kind(kind: SeqKind) -> SeqKindGuard {
+    CURRENT_SEQ_KIND.with(|k| k.set(Some(kind)));
+    SeqKindGuard { _kind: Some(kind) }
+}
+
+pub struct SeqKindGuard {
+    _kind: Option<SeqKind>,
+}
+
+impl Drop for SeqKindGuard {
+    fn drop(&mut self) {
+        CURRENT_SEQ_KIND.with(|k| k.set(None));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeqKind {
+    List,
+    Vector,
+    Set,
+}
 
 pub struct EdnDeserializer<'de> {
     #[allow(dead_code)]
@@ -479,12 +510,24 @@ impl<'de> serde::Deserializer<'de> for EdnDeserializer<'de> {
             Value::String(s) => visitor.visit_string(s),
             Value::Symbol(s) => visitor.visit_str(s.as_str()),
             Value::Keyword(k) => visitor.visit_str(k.as_str()),
-            Value::List(v) | Value::Vector(v) => {
+            Value::List(v) => {
                 let len = v.len();
                 let elements: Vec<Value> = v;
+                let _guard = set_seq_kind(SeqKind::List);
                 visitor.visit_seq(SeqAccess {
                     elements: elements.into_iter(),
                     len,
+                    kind: Some(SeqKind::List),
+                })
+            }
+            Value::Vector(v) => {
+                let len = v.len();
+                let elements: Vec<Value> = v;
+                let _guard = set_seq_kind(SeqKind::Vector);
+                visitor.visit_seq(SeqAccess {
+                    elements: elements.into_iter(),
+                    len,
+                    kind: Some(SeqKind::Vector),
                 })
             }
             Value::Map(m) => {
@@ -497,9 +540,11 @@ impl<'de> serde::Deserializer<'de> for EdnDeserializer<'de> {
             Value::Set(v) => {
                 let len = v.len();
                 let elements: Vec<Value> = v;
+                let _guard = set_seq_kind(SeqKind::Set);
                 visitor.visit_seq(SeqAccess {
                     elements: elements.into_iter(),
                     len,
+                    kind: Some(SeqKind::Set),
                 })
             }
             Value::Tagged { tag, value } => {
@@ -666,14 +711,32 @@ impl<'de> serde::Deserializer<'de> for EdnDeserializer<'de> {
     }
 
     fn deserialize_newtype_struct<V>(
-        self,
-        _name: &'static str,
+        mut self,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_any(visitor)
+        if name == "__edn_list__" || name == "__edn_set__" {
+            self.skip_whitespace();
+            let value = self.parse_value()?;
+            let (items, kind) = match value {
+                Value::List(items) => (items, SeqKind::List),
+                Value::Vector(items) => (items, SeqKind::Vector),
+                Value::Set(items) => (items, SeqKind::Set),
+                _ => return Err(self.error(format!("expected sequence for {}", name))),
+            };
+            let len = items.len();
+            let _guard = set_seq_kind(kind);
+            visitor.visit_seq(SeqAccess {
+                elements: items.into_iter(),
+                len,
+                kind: Some(kind),
+            })
+        } else {
+            self.deserialize_any(visitor)
+        }
     }
 
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -751,6 +814,7 @@ impl<'de> serde::Deserializer<'de> for EdnDeserializer<'de> {
 struct SeqAccess {
     elements: std::vec::IntoIter<Value>,
     len: usize,
+    kind: Option<SeqKind>,
 }
 
 impl<'de> de::SeqAccess<'de> for SeqAccess {
@@ -768,7 +832,6 @@ impl<'de> de::SeqAccess<'de> for SeqAccess {
             .elements
             .next()
             .expect("element must exist when len > 0");
-        // Use the Value itself as the deserializer - it implements Deserialize
         seed.deserialize(element).map(Some)
     }
 

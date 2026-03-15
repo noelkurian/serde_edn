@@ -2,14 +2,23 @@ use serde::ser;
 
 use crate::error::Error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeqKind {
+    Vector,
+    List,
+    Set,
+}
+
 pub struct Serializer {
     output: String,
+    next_seq_kind: SeqKind,
 }
 
 impl Serializer {
     pub fn new() -> Self {
         Self {
             output: String::new(),
+            next_seq_kind: SeqKind::Vector,
         }
     }
 
@@ -191,9 +200,21 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.output.push_str(name);
-        self.output.push(' ');
-        value.serialize(self)
+        match name {
+            "__edn_list__" => {
+                self.next_seq_kind = SeqKind::List;
+                value.serialize(self)
+            }
+            "__edn_set__" => {
+                self.next_seq_kind = SeqKind::Set;
+                value.serialize(self)
+            }
+            _ => {
+                self.output.push_str(name);
+                self.output.push(' ');
+                value.serialize(self)
+            }
+        }
     }
 
     fn serialize_newtype_variant<T>(
@@ -214,8 +235,18 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        self.output.push('[');
-        Ok(SeqSerializer::new(self, ']'))
+        let (start, end) = match self.next_seq_kind {
+            SeqKind::Vector => ('[', ']'),
+            SeqKind::List => ('(', ')'),
+            SeqKind::Set => {
+                self.output.push_str("#{");
+                self.next_seq_kind = SeqKind::Vector;
+                return Ok(SeqSerializer::new(self, '}'));
+            }
+        };
+        self.output.push(start);
+        self.next_seq_kind = SeqKind::Vector;
+        Ok(SeqSerializer::new(self, end))
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {

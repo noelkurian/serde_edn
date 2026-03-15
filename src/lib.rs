@@ -1,10 +1,13 @@
 mod de;
+mod edn_types;
 mod error;
 mod ser;
 mod tags;
 mod types;
 mod value;
 
+pub use de::SeqKind;
+pub use edn_types::{EdnList, EdnSet};
 pub use error::Error;
 pub use tags::{format_inst_ms, handle_tagged_value, TagHandler, TagRegistry};
 pub use types::{Keyword, Symbol};
