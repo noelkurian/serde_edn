@@ -122,7 +122,8 @@ impl<'de> Deserialize<'de> for Keyword {
             where
                 E: de::Error,
             {
-                Ok(Keyword(v.to_string()))
+                let keyword_str = v.trim_start_matches(':');
+                Ok(Keyword(keyword_str.to_string()))
             }
         }
 
