@@ -1,0 +1,96 @@
+# serde_edn Keyword Serialization Bug in Map Keys
+
+## Issue Summary
+
+When serializing an EDN `Map` with keyword keys, the `serde_edn` library does not include the colon (`:`) prefix for keywords in map keys. This causes the serialized output to be invalid EDN or to lose the keyword semantics.
+
+## Expected Behavior
+
+When serializing a map like:
+```rust
+use serde_edn::Value;
+use std::collections::HashMap;
+
+let mut map = HashMap::new();
+map.insert(Value::Keyword("status".into()), Value::String("success".into()));
+let edn = Value::Map(map);
+```
+
+The serialized output should be:
+```
+{:status "success"}
+```
+
+## Actual Behavior
+
+The serialized output is:
+```
+{status "success"}
+```
+
+The colon prefix is missing from the keyword key.
+
+## Root Cause
+
+The issue is in the `Serialize` implementation for `Keyword` in `serde_edn`. Looking at `src/types.rs`:
+
+```rust
+impl Serialize for Keyword {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0)  // <-- Just serializes the string without ":"
+    }
+}
+```
+
+The `Keyword` type serializes as a plain string, losing the colon prefix. When used as a map key, this results in invalid EDN syntax.
+
+## Reproduction Code
+
+```rust
+// main.rs
+use serde_edn::Value;
+use std::collections::HashMap;
+
+fn main() {
+    // Create a map with keyword keys
+    let mut map = HashMap::new();
+    map.insert(Value::Keyword("status".into()), Value::String("success".into()));
+    map.insert(Value::Keyword("type".into()), Value::String("ns".into()));
+    map.insert(Value::Keyword("key".into()), Value::String("author".into()));
+    
+    let edn = Value::Map(map);
+    
+    // Serialize using serde_edn
+    let result = serde_edn::to_string(&edn);
+    
+    println!("Serialized: {:?}", result);
+    // Expected: {:status "success", :type "ns", :key "author"}
+    // Actual:   {status "success", type "ns", key "author"}
+}
+```
+
+## Suggested Fix
+
+Update the `Serialize` implementation for `Keyword` to include the colon prefix:
+
+```rust
+impl Serialize for Keyword {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize as string with ":" prefix
+        let with_colon = format!(":{}", self.0);
+        serializer.serialize_str(&with_colon)
+    }
+}
+```
+
+Note: This fix may have side effects for other use cases where keywords are used as values (not keys), so thorough testing is recommended.
+
+## Affected Versions
+
+Tested with: serde_edn from git (9e1a0ba)
