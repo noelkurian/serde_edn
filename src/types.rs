@@ -122,6 +122,7 @@ impl<'de> Deserialize<'de> for Keyword {
             where
                 E: de::Error,
             {
+                eprintln!("DEBUG Keyword::visit_str called with: {:?}", v);
                 let keyword_str = v.trim_start_matches(':');
                 Ok(Keyword(keyword_str.to_string()))
             }

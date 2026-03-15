@@ -302,7 +302,8 @@ impl<'de> Deserialize<'de> for Value {
                 E: de::Error,
             {
                 if v.starts_with(':') {
-                    Ok(Value::Keyword(Keyword(v.to_string())))
+                    let keyword_str = v.trim_start_matches(':');
+                    Ok(Value::Keyword(Keyword(keyword_str.to_string())))
                 } else if v.starts_with('#') {
                     // Manually parse tagged value format: #tag "value" or #tag Debug(...)
                     let rest = &v[1..];
